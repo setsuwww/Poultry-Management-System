@@ -1,0 +1,869 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model Role {
+  id        String   @id @default(cuid())
+  name      String   @unique // 'SUPER_ADMIN', 'ADMIN_PRODUKSI'
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  users     User[]
+
+  @@map("roles")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  name      String
+  email     String   @unique
+  password  String
+  roleId    String
+  role      Role     @relation(fields: [roleId], references: [id])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("users")
+}
+
+model Farm {
+  id        String   @id @default(cuid())
+  name      String
+  address   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  incomingChickens IncomingChicken[]
+
+  @@map("farms")
+}
+
+model Driver {
+  id        String   @id @default(cuid())
+  name      String
+  phone     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  incomingChickens IncomingChicken[]
+  distributionOrders DistributionOrder[]
+  liabilities      DriverLiability[]
+
+  @@map("drivers")
+}
+
+model Vehicle {
+  id        String   @id @default(cuid())
+  plateNo   String   @unique
+  type      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  incomingChickens IncomingChicken[]
+  distributionOrders DistributionOrder[]
+
+  @@map("vehicles")
+}
+
+model IncomingChicken {
+  id              String   @id @default(cuid())
+  date            DateTime // Tanggal
+  deliveryOrder   String   @unique // DO
+
+  farmId          String
+  farm            Farm     @relation(fields: [farmId], references: [id])
+  
+  driverId        String
+  driver          Driver   @relation(fields: [driverId], references: [id])
+  
+  vehicleId       String
+  vehicle         Vehicle  @relation(fields: [vehicleId], references: [id])
+
+  totalWeight     Float    // Jumlah Berat (kg)
+  totalCount      Int      // Jumlah Ekor
+  basketCount     Int      // Jumlah Keranjang
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  productionBatch ProductionBatch?
+
+  @@map("incoming_chickens")
+}
+
+model ProductionBatch {
+  id                String   @id @default(cuid())
+  batchNo           String   @unique // Contoh: Batch #001
+  
+  incomingChickenId String   @unique
+  incomingChicken   IncomingChicken @relation(fields: [incomingChickenId], references: [id])
+  
+  totalWeight       Float    // Total seluruh hasil produksi
+  yieldPercentage   Float    // Yield %
+  weightDifference  Float    // Selisih dengan berat ayam hidup
+
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  productionItems   ProductionItem[]
+  packingBatches    PackingBatch[]
+
+  @@map("production_batches")
+}
+
+model MasterPart {
+  id        String   @id @default(cuid())
+  name      String   @unique // Dada, Paha Atas, dll
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  productionItems ProductionItem[]
+  productPrice    ProductPrice?
+  outletInventories OutletInventory[]
+  closingItems      OutletClosingItem[]
+  transferItems     StockTransferItem[]
+  returnedItems     ReturnedItemV2[]
+  rejectedItems     RejectedItem[]
+  stockDifferences  StockDifference[]
+  adjustmentItems   StockAdjustmentItem[]
+  inventoryLedgers  InventoryLedger[]
+  qcItems           QualityControlItem[]
+  rejectedInvs      RejectedInventory[]
+  disposals         DisposalCandidate[]
+
+  @@map("master_parts")
+}
+
+model ProductionItem {
+  id                String   @id @default(cuid())
+  
+  productionBatchId String
+  productionBatch   ProductionBatch @relation(fields: [productionBatchId], references: [id])
+
+  masterPartId      String
+  masterPart        MasterPart      @relation(fields: [masterPartId], references: [id])
+
+  weight            Float    // Berat (kg)
+
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  packingItems      PackingItem[]
+
+  // Validasi unik kombinasi batch & part (tidak boleh duplikat bagian dalam 1 batch)
+  @@unique([productionBatchId, masterPartId])
+  @@map("production_items")
+}
+
+model PackingBatch {
+  id                String   @id @default(cuid())
+  
+  productionBatchId String
+  productionBatch   ProductionBatch @relation(fields: [productionBatchId], references: [id])
+  
+  createdBy         String   @default("Admin") // Hardcoded for now
+  packingDate       DateTime // Tanggal
+  notes             String?  @db.Text
+
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  packingItems      PackingItem[]
+
+  @@map("packing_batches")
+}
+
+model PackingItem {
+  id                String   @id @default(cuid())
+
+  packingBatchId    String
+  packingBatch      PackingBatch @relation(fields: [packingBatchId], references: [id], onDelete: Cascade)
+
+  productionItemId  String
+  productionItem    ProductionItem @relation(fields: [productionItemId], references: [id])
+
+  packageSize       Float    // 5 atau 10
+  shrinkage         Float    // 0.2
+  packageCount      Int      // Jumlah Plastik
+  
+  grossWeight       Float    // packageSize * packageCount
+  netWeight         Float    // (packageSize + shrinkage) * packageCount
+  remainingWeight   Float    // Sisa stok produksi setelah diambil
+
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  distributionItems DistributionItem[]
+
+  @@map("packing_items")
+}
+
+// ============================================
+// MODUL KASIR PRODUKSI
+// ============================================
+
+model MasterSupportItem {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  unit      String   // Satuan (Pack, Roll, Ikat)
+  stock     Int      @default(0) // Inventory sederhana untuk barang pendukung
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  purchaseItems PurchaseItem[]
+
+  @@map("master_support_items")
+}
+
+model PurchaseTransaction {
+  id          String   @id @default(cuid())
+  date        DateTime
+  supplier    String
+  notes       String?  @db.Text
+  totalAmount Float    // Total keseluruhan pembelian
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  items       PurchaseItem[]
+
+  @@map("purchase_transactions")
+}
+
+model PurchaseItem {
+  id                  String   @id @default(cuid())
+  purchaseId          String
+  purchase            PurchaseTransaction @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+  masterSupportItemId String
+  masterSupportItem   MasterSupportItem   @relation(fields: [masterSupportItemId], references: [id])
+  quantity            Int
+  price               Float
+  total               Float
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@map("purchase_items")
+}
+
+model ProductPrice {
+  id            String   @id @default(cuid())
+  masterPartId  String   @unique
+  masterPart    MasterPart @relation(fields: [masterPartId], references: [id])
+  currentPrice  Float
+  updatedAt     DateTime @updatedAt
+  
+  histories     PriceHistory[]
+
+  @@map("product_prices")
+}
+
+model PriceHistory {
+  id             String   @id @default(cuid())
+  productPriceId String
+  productPrice   ProductPrice @relation(fields: [productPriceId], references: [id], onDelete: Cascade)
+  oldPrice       Float
+  newPrice       Float
+  effectiveDate  DateTime
+  notes          String?
+  createdAt      DateTime @default(now())
+
+  @@map("price_histories")
+}
+
+model DistributionOrder {
+  id            String   @id @default(cuid())
+  sjNumber      String   @unique // Surat Jalan
+  date          DateTime
+  destination   String   // Nama Outlet / Reseller
+  type          String   // 'OUTLET' atau 'RESELLER'
+  driverId      String
+  driver        Driver   @relation(fields: [driverId], references: [id])
+  vehicleId     String
+  vehicle       Vehicle  @relation(fields: [vehicleId], references: [id])
+  status        String   @default("MENUNGGU_VERIFIKASI_DRIVER") // MENUNGGU_VERIFIKASI_DRIVER, DALAM_PENGIRIMAN, PERLU_PERBAIKAN, MENUNGGU_VERIFIKASI_OUTLET, SELESAI, BERMASALAH
+  totalWeight   Float
+  totalItems    Int
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  items         DistributionItem[]
+  verifications DeliveryVerification[]
+  signatures    DeliverySignature[]
+  logs          DeliveryLog[]
+  outletReceipt OutletReceipt?
+
+  @@map("distribution_orders")
+}
+
+model DistributionItem {
+  id             String   @id @default(cuid())
+  distributionId String
+  distribution   DistributionOrder @relation(fields: [distributionId], references: [id], onDelete: Cascade)
+  
+  packingItemId  String
+  packingItem    PackingItem @relation(fields: [packingItemId], references: [id])
+
+  quantity       Int      // Jumlah Pack/Plastik
+  weight         Float    // Berat kg yang didistribusikan
+  
+  returnedItems  ReturnedItem[]
+  liabilities    DriverLiability[]
+
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@map("distribution_items")
+}
+
+model ReturnedItem {
+  id                 String   @id @default(cuid())
+  distributionItemId String
+  distributionItem   DistributionItem @relation(fields: [distributionItemId], references: [id])
+  date               DateTime
+  quantity           Int      // Jumlah Pack/Plastik
+  weight             Float
+  notes              String?  @db.Text
+  status             String   @default("MENUNGGU_VERIFIKASI")
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@map("returned_items")
+}
+
+model DailyRevenue {
+  id                String   @id @default(cuid())
+  date              DateTime @unique
+  totalRevenue      Float    // Total Omset
+  cashAmount        Float
+  nonCashAmount     Float
+  receivableAmount  Float    // Piutang
+  expenseAmount     Float
+  expenseNotes      String?  @db.Text
+  netBalance        Float    // Saldo Bersih
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@map("daily_revenues")
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  action    String   // e.g. 'CREATE_DISTRIBUTION', 'UPDATE_PRICE'
+  entity    String   // e.g. 'DistributionOrder'
+  entityId  String
+  details   String   @db.Text // JSON string
+  user      String   // User who performed the action
+  createdAt DateTime @default(now())
+
+  @@map("audit_logs")
+}
+
+// ============================================
+// MODUL DRIVER
+// ============================================
+
+model DeliveryVerification {
+  id                 String   @id @default(cuid())
+  distributionOrderId String
+  distributionOrder  DistributionOrder @relation(fields: [distributionOrderId], references: [id], onDelete: Cascade)
+  isApproved         Boolean
+  notes              String?  @db.Text // Alasan jika ditolak
+  verifiedAt         DateTime @default(now())
+
+  @@map("delivery_verifications")
+}
+
+model DeliverySignature {
+  id                 String   @id @default(cuid())
+  distributionOrderId String
+  distributionOrder  DistributionOrder @relation(fields: [distributionOrderId], references: [id], onDelete: Cascade)
+  signatureData      String   @db.LongText // Base64 signature
+  signedAt           DateTime @default(now())
+
+  @@map("delivery_signatures")
+}
+
+model DeliveryLog {
+  id                 String   @id @default(cuid())
+  distributionOrderId String
+  distributionOrder  DistributionOrder @relation(fields: [distributionOrderId], references: [id], onDelete: Cascade)
+  status             String
+  notes              String?  @db.Text
+  createdAt          DateTime @default(now())
+
+  @@map("delivery_logs")
+}
+
+model DriverLiability {
+  id                 String   @id @default(cuid())
+  driverId           String
+  driver             Driver   @relation(fields: [driverId], references: [id])
+  distributionItemId String
+  distributionItem   DistributionItem @relation(fields: [distributionItemId], references: [id], onDelete: Cascade)
+  
+  sentQuantity       Int
+  receivedQuantity   Int
+  missingQuantity    Int
+  unitPrice          Float
+  totalLoss          Float
+  
+  status             String   @default("BELUM_DIBAYAR") // BELUM_DIBAYAR, LUNAS
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  compensations      MinusCompensation[]
+
+  @@map("driver_liabilities")
+}
+
+// ============================================
+// MODUL KASIR OUTLET & ADMIN OMSET
+// ============================================
+
+model OutletInventory {
+  id           String   @id @default(cuid())
+  outletId     String
+  outlet       Outlet   @relation(fields: [outletId], references: [id])
+  masterPartId String
+  masterPart   MasterPart @relation(fields: [masterPartId], references: [id])
+  stock        Int      @default(0) // Akumulasi total pack
+  updatedAt    DateTime @updatedAt
+
+  @@unique([outletId, masterPartId])
+  @@map("outlet_inventories")
+}
+
+model OutletReceipt {
+  id                  String   @id @default(cuid())
+  distributionOrderId String   @unique
+  distributionOrder   DistributionOrder @relation(fields: [distributionOrderId], references: [id])
+  receivedAt          DateTime @default(now())
+  cashierName         String   @default("Kasir Outlet")
+
+  items               OutletReceiptItem[]
+
+  @@map("outlet_receipts")
+}
+
+model OutletReceiptItem {
+  id               String   @id @default(cuid())
+  outletReceiptId  String
+  outletReceipt    OutletReceipt @relation(fields: [outletReceiptId], references: [id], onDelete: Cascade)
+  masterPartId     String
+  sentQuantity     Int
+  receivedQuantity Int
+  status           String // "Sesuai", "Tidak Sesuai"
+  notes            String? @db.Text
+
+  @@map("outlet_receipt_items")
+}
+
+model DailyOutletRevenue {
+  id                String   @id @default(cuid())
+  date              DateTime @unique
+  totalRevenue      Float    
+  cashAmount        Float
+  nonCashAmount     Float
+  receivableAmount  Float    
+  expenseAmount     Float
+  expenseNotes      String?  @db.Text
+  netBalance        Float    
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@map("daily_outlet_revenues")
+}
+
+model CashDeposit {
+  id            String   @id @default(cuid())
+  date          DateTime
+  amount        Float
+  notes         String?  @db.Text
+  cashierName   String   @default("Kasir Outlet")
+  status        String   @default("MENUNGGU_VERIFIKASI") // DRAFT, MENUNGGU_VERIFIKASI, DISETUJUI, PERLU_KLARIFIKASI
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  verification  DepositVerification?
+  liabilities   CashierLiability[]
+
+  @@map("cash_deposits")
+}
+
+model DepositVerification {
+  id               String   @id @default(cuid())
+  cashDepositId    String   @unique
+  cashDeposit      CashDeposit @relation(fields: [cashDepositId], references: [id], onDelete: Cascade)
+  verifiedBy       String   @default("Admin Omset")
+  actualSalesAmount Float   // Data Penjualan dari aplikasi Kasir Pintar
+  difference       Float    // Selisih (Deposit - Sales)
+  notes            String?  @db.Text
+  verifiedAt       DateTime @default(now())
+  
+  compensations    MinusCompensation[]
+
+  @@map("deposit_verifications")
+}
+
+model CashierLiability {
+  id               String   @id @default(cuid())
+  cashDepositId    String
+  cashDeposit      CashDeposit @relation(fields: [cashDepositId], references: [id], onDelete: Cascade)
+  shortageAmount   Float
+  liabilityAmount  Float    // Kekurangan x 2
+  status           String   @default("BELUM_DIBAYAR") // BELUM_DIBAYAR, LUNAS
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@map("cashier_liabilities")
+}
+
+model MinusCompensation {
+  id                    String   @id @default(cuid())
+  depositVerificationId String
+  depositVerification   DepositVerification @relation(fields: [depositVerificationId], references: [id], onDelete: Cascade)
+  driverLiabilityId     String
+  driverLiability       DriverLiability @relation(fields: [driverLiabilityId], references: [id], onDelete: Cascade)
+  amountApplied         Float
+  createdAt             DateTime @default(now())
+
+  @@map("minus_compensations")
+}
+
+// ============================================
+// MODUL OUTLET & ADMIN STOCK OPNAME (V2)
+// ============================================
+
+model Outlet {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  address   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  closingHistories    OutletClosing[]
+  outgoingTransfers   StockTransfer[] @relation("TransferFromOutlet")
+  incomingTransfers   StockTransfer[] @relation("TransferToOutlet")
+  returnedGoods       ReturnedGoods[]
+  rejectedGoods       RejectedGoods[]
+  inventories         OutletInventory[]
+  stockAdjustments    StockAdjustment[]
+  inventoryLedgers    InventoryLedger[]
+  qcHeaders           QualityControlHeader[]
+  
+  @@map("outlets")
+}
+
+model OutletClosing {
+  id           String   @id @default(cuid())
+  outletId     String
+  outlet       Outlet   @relation(fields: [outletId], references: [id])
+  date         DateTime
+  status       String   @default("MENUNGGU_VERIFIKASI") // MENUNGGU_VERIFIKASI, SESUAI, MINUS_BARANG
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  items        OutletClosingItem[]
+  employees    ClosingEmployee[]
+  verification StockOpnameVerification?
+
+  @@map("outlet_closings")
+}
+
+model OutletClosingItem {
+  id               String   @id @default(cuid())
+  outletClosingId  String
+  outletClosing    OutletClosing @relation(fields: [outletClosingId], references: [id], onDelete: Cascade)
+  masterPartId     String
+  masterPart       MasterPart    @relation(fields: [masterPartId], references: [id])
+  
+  initialStock     Int      // Stok Awal
+  systemOut        Int      // Barang Keluar (Sistem menghitung Stok Awal - Sisa)
+  finalPhysical    Int      // Sisa Fisik (Diinput Kasir)
+  
+  notes            String?  @db.Text
+  createdAt        DateTime @default(now())
+
+  @@map("outlet_closing_items")
+}
+
+model ClosingEmployee {
+  id              String   @id @default(cuid())
+  outletClosingId String
+  outletClosing   OutletClosing @relation(fields: [outletClosingId], references: [id], onDelete: Cascade)
+  name            String
+  role            String   // 'Kasir' atau 'Operator'
+  createdAt       DateTime @default(now())
+
+  @@map("closing_employees")
+}
+
+model StockTransfer {
+  id            String   @id @default(cuid())
+  transferNo    String   @unique
+  date          DateTime
+  fromOutletId  String
+  fromOutlet    Outlet   @relation("TransferFromOutlet", fields: [fromOutletId], references: [id])
+  toOutletId    String
+  toOutlet      Outlet   @relation("TransferToOutlet", fields: [toOutletId], references: [id])
+  
+  status        String   @default("DRAFT") // DRAFT, MENUNGGU_PERSETUJUAN, DIKIRIM, DITERIMA
+  notes         String?  @db.Text
+  
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  items         StockTransferItem[]
+
+  @@index([date])
+  @@index([status])
+  @@map("stock_transfers")
+}
+
+model StockTransferItem {
+  id              String   @id @default(cuid())
+  stockTransferId String
+  stockTransfer   StockTransfer @relation(fields: [stockTransferId], references: [id], onDelete: Cascade)
+  masterPartId    String
+  masterPart      MasterPart    @relation(fields: [masterPartId], references: [id])
+  quantity        Int
+  notes           String?       @db.Text
+  createdAt       DateTime @default(now())
+
+  @@map("stock_transfer_items")
+}
+
+model ReturnedGoods {
+  id          String   @id @default(cuid())
+  outletId    String
+  outlet      Outlet   @relation(fields: [outletId], references: [id])
+  date        DateTime
+  status      String   @default("MENUNGGU_QC") // MENUNGGU_QC, SELESAI
+  notes       String?  @db.Text
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  items       ReturnedItemV2[]
+
+  @@map("returned_goods")
+}
+
+model ReturnedItemV2 {
+  id              String   @id @default(cuid())
+  returnedGoodsId String
+  returnedGoods   ReturnedGoods @relation(fields: [returnedGoodsId], references: [id], onDelete: Cascade)
+  masterPartId    String
+  masterPart      MasterPart    @relation(fields: [masterPartId], references: [id])
+  quantity        Int
+  reason          String?       @db.Text
+  qcStatus        String?       // LAYAK_DIJUAL, TIDAK_LAYAK (Diset oleh Checker)
+  createdAt       DateTime @default(now())
+
+  @@map("returned_items_v2")
+}
+
+model RejectedGoods {
+  id          String   @id @default(cuid())
+  outletId    String
+  outlet      Outlet   @relation(fields: [outletId], references: [id])
+  date        DateTime
+  status      String   @default("MENUNGGU_QC") // MENUNGGU_QC, SELESAI
+  notes       String?  @db.Text
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  items       RejectedItem[]
+
+  @@map("rejected_goods")
+}
+
+model RejectedItem {
+  id              String   @id @default(cuid())
+  rejectedGoodsId String
+  rejectedGoods   RejectedGoods @relation(fields: [rejectedGoodsId], references: [id], onDelete: Cascade)
+  masterPartId    String
+  masterPart      MasterPart    @relation(fields: [masterPartId], references: [id])
+  quantity        Int
+  reason          String?       @db.Text
+  photoUrl        String?
+  qcStatus        String?       // MASIH_LAYAK, PEMUSNAHAN
+  createdAt       DateTime @default(now())
+
+  @@map("rejected_items")
+}
+
+model StockOpnameVerification {
+  id              String   @id @default(cuid())
+  outletClosingId String   @unique
+  outletClosing   OutletClosing @relation(fields: [outletClosingId], references: [id], onDelete: Cascade)
+  verifiedBy      String   @default("Admin SO")
+  status          String   // SESUAI, MINUS_BARANG
+  approvalStatus  String?  // APPROVED, REJECTED
+  notes           String?  @db.Text
+  verifiedAt      DateTime @default(now())
+
+  differences     StockDifference[]
+
+  @@map("stock_opname_verifications")
+}
+
+model StockDifference {
+  id              String   @id @default(cuid())
+  soVerificationId String
+  soVerification  StockOpnameVerification @relation(fields: [soVerificationId], references: [id], onDelete: Cascade)
+  masterPartId    String
+  masterPart      MasterPart @relation(fields: [masterPartId], references: [id])
+  missingQuantity Int
+  classification  String     @default("HILANG") // SUSUT, HILANG
+  unitPrice       Float
+  totalLoss       Float    // missingQuantity * unitPrice
+  createdAt       DateTime @default(now())
+
+  liabilities     EmployeeLiability[]
+
+  @@map("stock_differences")
+}
+
+model EmployeeLiability {
+  id                String   @id @default(cuid())
+  stockDifferenceId String
+  stockDifference   StockDifference @relation(fields: [stockDifferenceId], references: [id], onDelete: Cascade)
+  employeeName      String
+  employeeRole      String
+  liabilityAmount   Float    // Tanggungan spesifik untuk orang ini
+  status            String   @default("BELUM_DIBAYAR") // BELUM_DIBAYAR, LUNAS, POTONG_GAJI
+  notes             String?  @db.Text
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@map("employee_liabilities")
+}
+
+model StockAdjustment {
+  id              String   @id @default(cuid())
+  date            DateTime
+  outletId        String
+  outlet          Outlet   @relation(fields: [outletId], references: [id])
+  referenceId     String?  // ID transaksi yang memicu adjustment (misal ID SO)
+  reason          String?  @db.Text
+  createdBy       String   @default("System")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  items           StockAdjustmentItem[]
+
+  @@map("stock_adjustments")
+}
+
+model StockAdjustmentItem {
+  id                String   @id @default(cuid())
+  stockAdjustmentId String
+  stockAdjustment   StockAdjustment @relation(fields: [stockAdjustmentId], references: [id], onDelete: Cascade)
+  masterPartId      String
+  masterPart        MasterPart @relation(fields: [masterPartId], references: [id])
+  qtyAdjusted       Int      // Bisa minus atau plus
+  createdAt         DateTime @default(now())
+
+  @@map("stock_adjustment_items")
+}
+
+model InventoryLedger {
+  id              String   @id @default(cuid())
+  date            DateTime
+  outletId        String
+  outlet          Outlet   @relation(fields: [outletId], references: [id])
+  masterPartId    String
+  masterPart      MasterPart @relation(fields: [masterPartId], references: [id])
+  
+  transactionType String   // PRODUKSI, PACKING, DISTRIBUSI, TRANSFER_OUT, TRANSFER_IN, RETUR, RIJEK, SO_ADJUSTMENT
+  referenceNo     String   // Nomor referensi (misal TRF-..., DO-..., dsb)
+  
+  qtyIn           Int      @default(0)
+  qtyOut          Int      @default(0)
+  balance         Int      // Saldo akhir setelah transaksi ini
+  
+  user            String   // Pelaku transaksi
+  createdAt       DateTime @default(now())
+
+  @@map("inventory_ledgers")
+}
+
+// ============================================
+// MODUL QUALITY CONTROL (CHECKER SASAK) & PEMUSNAHAN
+// ============================================
+
+model QualityControlHeader {
+  id              String   @id @default(cuid())
+  date            DateTime
+  outletId        String
+  outlet          Outlet   @relation(fields: [outletId], references: [id])
+  type            String   // RETUR, RIJEK
+  referenceId     String   // ID dari ReturnedGoods atau RejectedGoods
+  
+  status          String   @default("MENUNGGU_QC") // MENUNGGU_QC, SELESAI
+  verifiedBy      String?
+  notes           String?  @db.Text
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  items           QualityControlItem[]
+  logs            QualityControlLog[]
+
+  @@map("quality_control_headers")
+}
+
+model QualityControlItem {
+  id              String   @id @default(cuid())
+  qcHeaderId      String
+  qcHeader        QualityControlHeader @relation(fields: [qcHeaderId], references: [id], onDelete: Cascade)
+  masterPartId    String
+  masterPart      MasterPart @relation(fields: [masterPartId], references: [id])
+  quantity        Int
+  qcResult        String   // LAYAK_DIJUAL, TIDAK_LAYAK
+  notes           String?  @db.Text
+  createdAt       DateTime @default(now())
+
+  @@map("quality_control_items")
+}
+
+model QualityControlLog {
+  id              String   @id @default(cuid())
+  qcHeaderId      String
+  qcHeader        QualityControlHeader @relation(fields: [qcHeaderId], references: [id], onDelete: Cascade)
+  action          String
+  user            String
+  details         String?  @db.Text
+  createdAt       DateTime @default(now())
+
+  @@map("quality_control_logs")
+}
+
+model RejectedInventory {
+  id              String   @id @default(cuid())
+  masterPartId    String
+  masterPart      MasterPart @relation(fields: [masterPartId], references: [id])
+  stock           Int      @default(0)
+  updatedAt       DateTime @updatedAt
+
+  @@unique([masterPartId])
+  @@map("rejected_inventories")
+}
+
+model DisposalCandidate {
+  id              String   @id @default(cuid())
+  date            DateTime
+  masterPartId    String
+  masterPart      MasterPart @relation(fields: [masterPartId], references: [id])
+  quantity        Int
+  reason          String?  @db.Text
+  status          String   @default("MENUNGGU_PEMUSNAHAN") // MENUNGGU_PEMUSNAHAN, DIMUSNAHKAN
+  executedBy      String?
+  executedAt      DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@map("disposal_candidates")
+}
