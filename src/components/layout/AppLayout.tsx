@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Scale, FileOutput, User, PackageOpen, Truck, Scissors, Wallet, MapPin, Store, ShieldCheck, ClipboardList, CreditCard } from "lucide-react";
+import { LayoutDashboard, Scale, FileOutput, User, PackageOpen, Truck, Scissors, Wallet, MapPin, Store, ShieldCheck, ClipboardList, CreditCard, Database } from "lucide-react";
 import { TopHeader } from "./TopHeader";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
@@ -16,6 +16,7 @@ const navItems = [
   { name: "Ayam Masuk", href: "/admin-produksi/incoming", icon: Truck },
   { name: "Produksi", href: "/admin-produksi/production", icon: Scissors },
   { name: "Packing", href: "/admin-produksi/packing", icon: PackageOpen },
+  { name: "Data Master", href: "/admin-produksi/master", icon: Database },
 ];
 
 export function AppLayout({ children, user }: { children: React.ReactNode; user?: any }) {

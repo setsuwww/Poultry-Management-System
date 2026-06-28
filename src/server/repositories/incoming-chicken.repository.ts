@@ -27,6 +27,11 @@ export class IncomingChickenRepository {
       where: {
         productionBatch: null, // Only chickens that haven't been processed
       },
+      include: {
+        farm: true,
+        driver: true,
+        vehicle: true,
+      },
       orderBy: {
         date: "desc",
       },

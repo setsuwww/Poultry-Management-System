@@ -60,7 +60,7 @@ export default async function ProductionBatchPage() {
                     </td>
                     <td className="px-6 py-4 text-center">
                       <Link
-                        href={`/production/${batch.id}`}
+                        href={`/admin-produksi/production/${batch.id}`}
                         className="inline-flex items-center gap-1 text-sm bg-mist-100 hover:bg-mist-200 dark:bg-mist-800 dark:hover:bg-mist-700 px-3 py-1.5 rounded-md transition-colors font-medium text-mist-700 dark:text-mist-300"
                       >
                         <Eye className="h-4 w-4" /> Detail

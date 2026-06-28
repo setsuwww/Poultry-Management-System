@@ -28,7 +28,7 @@ export default async function AdminSOPage() {
   const chartData = Object.values(chartMap).slice(-14); // Last 14 days
 
   return (
-    <div className="max-w-6xl mx-auto space-y-6">
+    <div className="mx-auto space-y-6">
       <div className="flex justify-between items-end mb-6">
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-mist-900 dark:text-white">Audit Stock Opname</h1>
@@ -79,7 +79,7 @@ export default async function AdminSOPage() {
                       {c.items.length}
                     </td>
                     <td className="px-6 py-4 text-right">
-                      <Link href={`/so/verifikasi/${c.id}`}>
+                      <Link href={`/admin-so/so/verifikasi/${c.id}`}>
                         <button className="bg-rose-600 hover:bg-rose-700 text-white px-4 py-2 rounded-lg text-sm font-semibold flex items-center justify-center gap-2 w-full md:w-auto">
                           Verifikasi SO <ArrowRight className="w-4 h-4" />
                         </button>

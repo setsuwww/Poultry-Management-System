@@ -20,7 +20,7 @@ export function AdminSOLayout({ children, user }: { children: React.ReactNode; u
     <div className="flex h-screen bg-mist-50 dark:bg-mist-900">
       <aside className="w-64 bg-white dark:bg-mist-950 border-r border-mist-200 dark:border-mist-800 flex flex-col">
         <div className="h-16 flex items-center px-6 border-b border-mist-200 dark:border-mist-800">
-          <div className="flex items-center gap-2 text-rose-600 font-bold text-lg">
+          <div className="flex items-center gap-2 text-blue-600 font-bold text-lg">
             <PackageSearch className="w-6 h-6" />
             <span>Admin SO</span>
           </div>
@@ -36,23 +36,25 @@ export function AdminSOLayout({ children, user }: { children: React.ReactNode; u
                 className={cn(
                   "flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors",
                   isActive
-                    ? "bg-orange-50 text-orange-700 font-semibold border-r-4 border-orange-600 dark:bg-orange-500/20 dark:text-orange-400 dark:border-orange-500"
+                    ? "bg-blue-50 text-blue-700 font-semibold dark:bg-blue-500/20 dark:text-blue-400 dark:border-blue-500"
                     : "text-mist-600 hover:bg-mist-100 hover:text-mist-900 dark:text-mist-400 dark:hover:bg-mist-800 dark:hover:text-mist-50"
                 )}
               >
-                <item.icon className={cn("w-5 h-5", isActive
-                  ? "bg-orange-50 text-orange-700 font-semibold border-r-4 border-orange-600 dark:bg-orange-500/20 dark:text-orange-400 dark:border-orange-500"
-                  : "text-mist-600 hover:bg-mist-100 hover:text-mist-900 dark:text-mist-400 dark:hover:bg-mist-800 dark:hover:text-mist-50")} />
+                <item.icon className={cn("w-4 h-4", isActive
+                  ? "text-blue-700 dark:text-blue-400"
+                  : "text-mist-600 hover:text-mist-900 dark:text-mist-400 dark:hover:text-mist-50")} />
                 {item.name}
               </Link>
             );
           })}
         </nav>
       </aside>
-
-      <main className="flex-1 overflow-y-auto p-8">
-        {children}
-      </main>
+      <div className="flex flex-col flex-1 h-screen overflow-hidden">
+        <TopHeader user={user} />
+        <main className="flex-1 overflow-y-auto p-8">
+          {children}
+        </main>
+      </div>
     </div>
   );
 }

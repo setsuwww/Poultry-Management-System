@@ -54,7 +54,7 @@ export function KasirLayout({ children, user }: { children: React.ReactNode; use
       <div className="flex flex-col flex-1 pl-64 w-full min-h-screen">
         <TopHeader user={user} />
         <main className="flex-1">
-          <div className="mx-auto max-w-7xl p-8">{children}</div>
+          <div className="mx-auto p-8">{children}</div>
         </main>
       </div>
     </div>
